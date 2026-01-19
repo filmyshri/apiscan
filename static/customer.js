@@ -24,6 +24,7 @@ const pdfSelectedButton = document.getElementById("pdf-selected");
 const clearSelectedButton = document.getElementById("clear-selected");
 const selfieSection = document.getElementById("selfie-section");
 const eventSelfieStatus = document.getElementById("event-selfie-status");
+const quickAccessDropdown = document.getElementById("quick-access-dropdown");
 
 let currentEventId = null;
 let currentEventCode = null;
@@ -467,4 +468,25 @@ clearSelectedButton.addEventListener("click", () => {
   document.querySelectorAll(".select-checkbox").forEach((el) => {
     el.checked = false;
   });
+});
+
+// Quick Access Dropdown - Hide/Show based on scroll
+window.addEventListener("scroll", () => {
+  if (!quickAccessDropdown) return;
+  const eventGallery = document.getElementById("event-gallery");
+  if (!eventGallery) return;
+  
+  const galleryRect = eventGallery.getBoundingClientRect();
+  // Show quick access when the gallery is in view or below viewport
+  if (galleryRect.top < window.innerHeight) {
+    quickAccessDropdown.style.display = "block";
+  } else {
+    quickAccessDropdown.style.display = "none";
+  }
+});
+
+// Initialize visibility on load
+window.addEventListener("load", () => {
+  const event = new Event("scroll");
+  window.dispatchEvent(event);
 });

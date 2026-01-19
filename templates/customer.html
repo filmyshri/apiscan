@@ -16,16 +16,6 @@
         <p>Enter the event code to view and match photos.</p>
       </header>
 
-      <section class="card">
-        <h2>Quick Access</h2>
-        <div class="event-grid">
-          <a class="button secondary" href="#load-event">Load Event</a>
-          <a class="button secondary" href="#selfie-section">Selfie Match</a>
-          <a class="button secondary" href="#selected-photos">Selected Photos</a>
-          <a class="button secondary" href="#event-gallery">Gallery</a>
-        </div>
-      </section>
-
       <section class="card" id="load-event">
         <h2>Load Event</h2>
         <div class="event-grid">
@@ -138,6 +128,20 @@
           </button>
         </div>
         <div id="event-gallery-grid" class="gallery-grid"></div>
+      </section>
+
+      <section class="card" id="quick-access-dropdown">
+        <details class="accordion">
+          <summary>⚡ Quick Access</summary>
+          <div class="accordion-body">
+            <div class="quick-access-grid">
+              <a class="button secondary" href="#load-event">📋 Load Event</a>
+              <a class="button secondary" href="#selfie-section">📷 Selfie Match</a>
+              <a class="button secondary" href="#selected-photos">✓ Selected Photos</a>
+              <a class="button secondary" href="#event-gallery">🖼️ Gallery</a>
+            </div>
+          </div>
+        </details>
       </section>
     </main>
 
