@@ -14,8 +14,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from fpdf import FPDF
 from PIL import Image
 import base64
-import urllib.request
-import urllib.error
+from google.cloud import vision
+from google.auth import default as google_auth_default
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,37 +71,49 @@ _LANDMARK_ORDER = [
 ]
 
 
-def _default_api_key():
-    return os.environ.get("GOOGLE_VISION_API_KEY", "").strip()
+def _get_vision_client():
+    """Get authenticated Google Vision API client using service account."""
+    credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", 
+                                       os.path.join(BASE_DIR, "credentials.json"))
+    if os.path.exists(credentials_path):
+        try:
+            return vision.ImageAnnotatorClient.from_service_account_file(credentials_path)
+        except Exception:
+            return None
+    return None
 
 
-def _vision_faces(image_bytes, api_key):
-    if not api_key:
+def _vision_faces(image_bytes, client):
+    """Detect faces in image using Google Vision API."""
+    if not client:
         return []
-    payload = {
-        "requests": [
-            {
-                "image": {"content": base64.b64encode(image_bytes).decode("ascii")},
-                "features": [{"type": "FACE_DETECTION", "maxResults": 5}],
-            }
-        ]
-    }
-    data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        f"https://vision.googleapis.com/v1/images:annotate?key={api_key}",
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError:
+        image = vision.Image(content=image_bytes)
+        response = client.face_detection(image=image, max_results=5)
+        faces = response.face_annotations
+        # Convert proto messages to dictionaries for compatibility
+        face_list = []
+        for face in faces:
+            face_dict = {
+                "landmarks": [],
+                "boundingPoly": {"vertices": []}
+            }
+            # Add landmarks
+            for landmark in face.landmarks:
+                face_dict["landmarks"].append({
+                    "type": landmark.type_.name,
+                    "position": {"x": landmark.position.x, "y": landmark.position.y}
+                })
+            # Add bounding box
+            for vertex in face.bounding_poly.vertices:
+                face_dict["boundingPoly"]["vertices"].append({
+                    "x": vertex.x,
+                    "y": vertex.y
+                })
+            face_list.append(face_dict)
+        return face_list
+    except Exception:
         return []
-    responses = result.get("responses", [])
-    if not responses:
-        return []
-    return responses[0].get("faceAnnotations", []) or []
 
 
 def _face_vector(face, width, height):
@@ -126,14 +138,14 @@ def _face_vector(face, width, height):
     return vector
 
 
-def _load_face_encodings(image_path, api_key):
-    if not api_key:
+def _load_face_encodings(image_path, client):
+    if not client:
         return []
     with open(image_path, "rb") as handle:
         image_bytes = handle.read()
     with Image.open(image_path) as img:
         width, height = img.size
-    faces = _vision_faces(image_bytes, api_key)
+    faces = _vision_faces(image_bytes, client)
     return [_face_vector(face, width, height) for face in faces]
 
 
@@ -688,10 +700,10 @@ def upload():
     upload_path = os.path.join(UPLOAD_DIR, upload_name)
     file.save(upload_path)
 
-    api_key = _default_api_key()
-    if not api_key:
-        return jsonify(error="Google Vision API key is not configured."), 400
-    selfie_encodings = _load_face_encodings(upload_path, api_key)
+    client = _get_vision_client()
+    if not client:
+        return jsonify(error="Google Vision API is not configured."), 400
+    selfie_encodings = _load_face_encodings(upload_path, client)
     if not selfie_encodings:
         return jsonify(error="No face found in the uploaded image."), 400
     selfie_encoding = selfie_encodings[0]
@@ -708,7 +720,7 @@ def upload():
 
     for filename in db_files:
         db_path = os.path.join(DB_DIR, filename)
-        db_encodings = _load_face_encodings(db_path, api_key)
+        db_encodings = _load_face_encodings(db_path, client)
         if not db_encodings:
             continue
         for db_encoding in db_encodings:
@@ -766,7 +778,7 @@ def login_event(event_id):
     code = request.form.get("code") or payload.get("code") or ""
     if event["code"] != code:
         return jsonify(error="Invalid access code."), 403
-    return jsonify(success=True, match_enabled=bool(_default_api_key()))
+    return jsonify(success=True, match_enabled=True)
 
 
 @app.route("/events/<event_id>/match", methods=["POST"])
@@ -796,10 +808,10 @@ def match_event(event_id):
     upload_path = os.path.join(upload_dir, upload_name)
     file.save(upload_path)
 
-    api_key = _default_api_key()
-    if not api_key:
-        return jsonify(error="Google Vision API key is missing."), 400
-    selfie_encodings = _load_face_encodings(upload_path, api_key)
+    client = _get_vision_client()
+    if not client:
+        return jsonify(error="Google Vision API is not configured."), 400
+    selfie_encodings = _load_face_encodings(upload_path, client)
     if not selfie_encodings:
         return jsonify(error="No face found in the uploaded image."), 400
     selfie_encoding = selfie_encodings[0]
@@ -837,7 +849,7 @@ def match_event(event_id):
             if os.path.splitext(filename)[1].lower() not in ALLOWED_EXTENSIONS:
                 continue
             db_path = os.path.join(folder_path, filename)
-            db_encodings = _load_face_encodings(db_path, api_key)
+            db_encodings = _load_face_encodings(db_path, client)
             if not db_encodings:
                 continue
             min_distance = None
