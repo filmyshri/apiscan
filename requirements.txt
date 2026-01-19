@@ -1,0 +1,5 @@
+Flask
+Pillow
+setuptools<81
+fpdf2
+google-cloud-vision
